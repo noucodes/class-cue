@@ -39,3 +39,20 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# env files (the app has none yet; keep secrets out when it does)
+.env
+.env.*
+!.env.example
+
+# editors
+.vscode/
+.idea/
+*.swp
+
+# Claude Code: personal settings (shared .claude/settings.json stays tracked)
+.claude/settings.local.json
+
+# personal documents: registration PDFs and ClassCue backups hold student info
+*.pdf
+classcue-backup-*.json
