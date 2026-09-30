@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import type { MaterialCommunityIcons } from '@expo/vector-icons';
-import type { EventType, Priority, TaskFilter, TaskType } from '@/types';
+import type { ClassMode, EventType, Priority, TaskFilter, TaskType } from '@/types';
 
 export type IconName = ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -9,13 +9,14 @@ export const EVENT_TYPES: Record<EventType, { label: string; plural: string; ico
   assignment: { label: 'Assignment', plural: 'Assignments', icon: 'file-document-edit-outline', color: '#3B82F6' },
   quiz: { label: 'Quiz', plural: 'Quizzes', icon: 'help-circle-outline', color: '#F59E0B' },
   exam: { label: 'Exam', plural: 'Exams', icon: 'school-outline', color: '#EF4444' },
+  report: { label: 'Report', plural: 'Reports', icon: 'presentation', color: '#EC4899' },
   pit: { label: 'PIT', plural: 'PITs', icon: 'puzzle-outline', color: '#8B5CF6' },
   project: { label: 'Project', plural: 'Projects', icon: 'folder-star-outline', color: '#10B981' },
   class: { label: 'Class', plural: 'Classes', icon: 'book-open-variant', color: '#64748B' },
   other: { label: 'Other', plural: 'Other', icon: 'calendar-blank-outline', color: '#94A3B8' },
 };
 
-export const TASK_TYPES: TaskType[] = ['assignment', 'quiz', 'exam', 'pit', 'project', 'other'];
+export const TASK_TYPES: TaskType[] = ['assignment', 'quiz', 'exam', 'report', 'pit', 'project', 'other'];
 
 /** Which form fields each event type shows. */
 export const TYPE_FIELDS: Record<TaskType, { timeLabel: string; priority: boolean; location: boolean; endTime: boolean }> = {
@@ -24,6 +25,7 @@ export const TYPE_FIELDS: Record<TaskType, { timeLabel: string; priority: boolea
   pit: { timeLabel: 'Due time', priority: true, location: true, endTime: false },
   quiz: { timeLabel: 'Time', priority: false, location: true, endTime: false },
   exam: { timeLabel: 'Time', priority: false, location: true, endTime: true },
+  report: { timeLabel: 'Time', priority: true, location: false, endTime: false },
   other: { timeLabel: 'Start time', priority: true, location: true, endTime: true },
 };
 
@@ -50,6 +52,11 @@ export const TASK_FILTERS: { value: TaskFilter; label: string }[] = [
   { value: 'overdue', label: 'Overdue' },
   { value: 'completed', label: 'Completed' },
 ];
+
+export const CLASS_MODES: Record<ClassMode, { label: string; icon: IconName }> = {
+  f2f: { label: 'Face-to-face', icon: 'account-group-outline' },
+  online: { label: 'Online', icon: 'laptop' },
+};
 
 export const CLASS_COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#64748B'];
 

@@ -10,15 +10,22 @@ export interface TextItem {
   text: string;
 }
 
-export interface ClassDraft {
-  subjectCode?: string;
-  subjectName: string;
-  teacher?: string;
-  room?: string;
+// Mirrors ClassSession in types/ (kept local so this file stays import-free for `npm run check`).
+export interface SessionDraft {
   /** 0 = Sunday … 6 = Saturday */
   days: number[];
   startTime: string;
   endTime: string;
+  room?: string;
+  mode: 'f2f' | 'online';
+}
+
+export interface ClassDraft {
+  subjectCode?: string;
+  subjectName: string;
+  teacher?: string;
+  /** Every meeting pattern listed for this subject, merged by subject name. */
+  sessions: SessionDraft[];
 }
 
 export interface ScheduleImportResult {
@@ -107,16 +114,23 @@ const to24h = (h: string, m: string, ap: string) => {
   return `${String(hour).padStart(2, '0')}:${m}`;
 };
 
-export function parseScheduleLine(text: string): Pick<ClassDraft, 'days' | 'startTime' | 'endTime' | 'room'> | null {
+/**
+ * "Th 6:00 PM - 9:00 PM/09-309(Cisco Lab 1)" → Thursday 18:00–21:00 in 09-309(Cisco Lab 1).
+ * On the registration form a room with a parenthesised name is a physical room, so a "(" means
+ * face-to-face; a bare code or no room at all means the meeting is online.
+ */
+export function parseScheduleLine(text: string): SessionDraft | null {
   const m = SCHEDULE_RE.exec(text);
   if (!m) return null;
   const days = parseDays(m[1]);
   if (!days) return null;
+  const room = m[8]?.trim() || undefined;
   return {
     days,
     startTime: to24h(m[2], m[3], m[4]),
     endTime: to24h(m[5], m[6], m[7]),
-    room: m[8]?.trim() || undefined,
+    room,
+    mode: room?.includes('(') ? 'f2f' : 'online',
   };
 }
 
@@ -149,7 +163,7 @@ export function parseSchedule(items: TextItem[]): ScheduleImportResult {
       .sort((a, b) => a.x - b.x)[0]
       ?.text.replace(/\s*\*+$/, '');
 
-  const drafts: ClassDraft[] = [];
+  const drafts: (Omit<ClassDraft, 'sessions'> & { session: SessionDraft })[] = [];
   const scheduled = new Set<TextItem>();
   for (const { item, parsed } of schedules) {
     // A schedule belongs to the nearest subject row at or above it (continuation lines have no code).
@@ -165,7 +179,7 @@ export function parseSchedule(items: TextItem[]): ScheduleImportResult {
       subjectCode: owner.text,
       subjectName: titleFor(owner) ?? owner.text,
       teacher,
-      ...parsed,
+      session: parsed,
     });
   }
 
@@ -175,15 +189,22 @@ export function parseSchedule(items: TextItem[]): ScheduleImportResult {
   };
 }
 
-/** Same subject, time and room on different days → one class with several days. */
-function mergeDrafts(drafts: ClassDraft[]): ClassDraft[] {
+/**
+ * Rows with the same subject name become one class with several sessions.
+ * Within a class, sessions at the same time, room and mode on different days are joined ("M" + "W" → "MW").
+ */
+function mergeDrafts(drafts: (Omit<ClassDraft, 'sessions'> & { session: SessionDraft })[]): ClassDraft[] {
   const out: ClassDraft[] = [];
-  for (const d of drafts) {
-    const same = out.find(
-      (o) => o.subjectCode === d.subjectCode && o.startTime === d.startTime && o.endTime === d.endTime && o.room === d.room,
+  const key = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
+  for (const { session, ...d } of drafts) {
+    let cls = out.find((o) => key(o.subjectName) === key(d.subjectName));
+    if (!cls) out.push((cls = { ...d, sessions: [] }));
+    cls.teacher ??= d.teacher;
+    const same = cls.sessions.find(
+      (s) => s.startTime === session.startTime && s.endTime === session.endTime && s.room === session.room && s.mode === session.mode,
     );
-    if (same) same.days = [...new Set([...same.days, ...d.days])];
-    else out.push({ ...d, days: [...d.days] });
+    if (same) same.days = [...new Set([...same.days, ...session.days])];
+    else cls.sessions.push({ ...session, days: [...session.days] });
   }
   return out;
 }

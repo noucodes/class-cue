@@ -7,7 +7,7 @@ import { ClassRow } from '@/components/rows';
 import { EmptyState, SectionTitle, styles } from '@/components/ui';
 import { WEEK_ORDER } from '@/constants';
 import { useAppStore } from '@/store/useAppStore';
-import { classesOnDay, formatTime, weekdayName } from '@/utils/schedule';
+import { formatTime, slotsOnDay, weekdayName } from '@/utils/schedule';
 
 export default function ClassesScreen() {
   const theme = useTheme();
@@ -54,19 +54,19 @@ export default function ClassesScreen() {
               </View>
             ) : (
               WEEK_ORDER.map((day) => {
-                const list = classesOnDay(classes, day);
+                const list = slotsOnDay(classes, day);
                 if (!list.length) return null;
                 return (
                   <View key={day}>
                     <SectionTitle>{`${weekdayName(day)}${day === today ? ' · Today' : ''}`}</SectionTitle>
                     <View style={{ gap: 8 }}>
-                      {list.map((c) => (
-                        <View key={c.id} style={{ flexDirection: 'row', gap: 8 }}>
+                      {list.map(({ cls, session }) => (
+                        <View key={`${cls.id}@${session.startTime}`} style={{ flexDirection: 'row', gap: 8 }}>
                           <Text variant="labelMedium" style={{ width: 64, paddingTop: 14, color: theme.colors.onSurfaceVariant }}>
-                            {formatTime(c.startTime)}
+                            {formatTime(session.startTime)}
                           </Text>
                           <View style={{ flex: 1 }}>
-                            <ClassRow cls={c} showDays={false} />
+                            <ClassRow cls={cls} session={session} />
                           </View>
                         </View>
                       ))}

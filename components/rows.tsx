@@ -2,13 +2,14 @@ import { memo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Checkbox, Text, useTheme } from 'react-native-paper';
 import { router } from 'expo-router';
-import { EVENT_TYPES, WEEK_ORDER } from '@/constants';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { CLASS_MODES, EVENT_TYPES } from '@/constants';
 import { PriorityTag, TypeIcon } from '@/components/ui';
 import { useAppStore } from '@/store/useAppStore';
-import type { AcademicEvent, AgendaItem, ClassSchedule } from '@/types';
-import { formatTime, formatTimeRange, isOverdue, relativeDayLabel, toDateKey, weekdayShort } from '@/utils/schedule';
+import type { AcademicEvent, AgendaItem, ClassSchedule, ClassSession } from '@/types';
+import { formatDays, formatTime, formatTimeRange, isOverdue, relativeDayLabel, sessionPlace, toDateKey } from '@/utils/schedule';
 
-const isTask = (e: AcademicEvent) => e.type !== 'quiz' && e.type !== 'exam';
+const isTask = (e: AcademicEvent) => e.type !== 'quiz' && e.type !== 'exam' && e.type !== 'report';
 
 export function dueText(e: AcademicEvent, now: Date): string {
   const day = relativeDayLabel(e.date, toDateKey(now));
@@ -30,10 +31,12 @@ export const EventRow = memo(function EventRow({
   const overdue = isOverdue(event, now);
   const muted = theme.colors.onSurfaceVariant;
 
+  // The checkbox sits beside the pressable, not inside it: nested buttons are invalid on web.
   return (
+    <View style={[styles.eventRow, { backgroundColor: theme.colors.surface }]}>
     <Pressable
       onPress={() => router.push(`/event/${event.id}`)}
-      style={({ pressed }) => [styles.row, { backgroundColor: theme.colors.surface, opacity: pressed ? 0.7 : 1 }]}
+      style={({ pressed }) => [styles.eventMain, { opacity: pressed ? 0.7 : 1 }]}
       accessibilityRole="button"
       accessibilityLabel={`${EVENT_TYPES[event.type].label}: ${event.title}`}
     >
@@ -58,18 +61,21 @@ export const EventRow = memo(function EventRow({
           {event.priority && !event.completed && <PriorityTag priority={event.priority} />}
         </View>
       </View>
+    </Pressable>
       <Checkbox.Android
         status={event.completed ? 'checked' : 'unchecked'}
         onPress={() => toggleComplete(event.id)}
         accessibilityLabel={event.completed ? 'Mark as not complete' : 'Mark as complete'}
       />
-    </Pressable>
+    </View>
   );
 });
 
-export const ClassRow = memo(function ClassRow({ cls, showDays = true }: { cls: ClassSchedule; showDays?: boolean }) {
+/** With `session`, shows that one meeting (day views); without it, lists every schedule of the class. */
+export const ClassRow = memo(function ClassRow({ cls, session }: { cls: ClassSchedule; session?: ClassSession }) {
   const theme = useTheme();
   const muted = theme.colors.onSurfaceVariant;
+  const sessions = session ? [session] : cls.sessions;
   return (
     <Pressable
       onPress={() => router.push(`/class/${cls.id}`)}
@@ -83,13 +89,17 @@ export const ClassRow = memo(function ClassRow({ cls, showDays = true }: { cls: 
           {cls.subjectName}
           {cls.subjectCode ? <Text style={{ color: muted }}>{`  ${cls.subjectCode}`}</Text> : null}
         </Text>
-        <Text variant="bodySmall" style={{ color: muted }}>
-          {formatTimeRange(cls.startTime, cls.endTime)}
-          {showDays ? ` · ${WEEK_ORDER.filter((d) => cls.days.includes(d)).map(weekdayShort).join(' / ')}` : ''}
-        </Text>
-        {(cls.room || cls.teacher) && (
+        {sessions.map((s, i) => (
+          <View key={i} style={styles.session}>
+            <MaterialCommunityIcons name={CLASS_MODES[s.mode].icon} size={14} color={muted} accessibilityLabel={CLASS_MODES[s.mode].label} />
+            <Text variant="bodySmall" numberOfLines={1} style={{ color: muted, flex: 1 }}>
+              {[session ? undefined : formatDays(s.days), formatTimeRange(s.startTime, s.endTime), sessionPlace(s)].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
+        ))}
+        {cls.teacher && (
           <Text variant="bodySmall" numberOfLines={1} style={{ color: muted }}>
-            {[cls.room, cls.teacher].filter(Boolean).join(' · ')}
+            {cls.teacher}
           </Text>
         )}
       </View>
@@ -107,7 +117,7 @@ export function AgendaRow({ item, now, subject }: { item: AgendaItem; now: Date;
       </Text>
       <View style={{ flex: 1 }}>
         {item.kind === 'class' ? (
-          <ClassRow cls={item.cls} showDays={false} />
+          <ClassRow cls={item.cls} session={item.session} />
         ) : (
           <EventRow event={item.event} subject={subject} now={now} />
         )}
@@ -118,8 +128,11 @@ export function AgendaRow({ item, now, subject }: { item: AgendaItem; now: Date;
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14 },
+  eventRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingRight: 4 },
+  eventMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
   body: { flex: 1, gap: 2 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 2 },
+  session: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   colorBar: { width: 4, alignSelf: 'stretch', borderRadius: 2 },
   agenda: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   time: { width: 64, paddingTop: 14 },

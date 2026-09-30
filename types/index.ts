@@ -1,4 +1,4 @@
-export type EventType = 'assignment' | 'quiz' | 'exam' | 'pit' | 'project' | 'class' | 'other';
+export type EventType = 'assignment' | 'quiz' | 'exam' | 'report' | 'pit' | 'project' | 'class' | 'other';
 
 /** Event types stored as AcademicEvent. Classes live in ClassSchedule. */
 export type TaskType = Exclude<EventType, 'class'>;
@@ -31,17 +31,26 @@ export interface AcademicEvent {
   updatedAt: string;
 }
 
+export type ClassMode = 'f2f' | 'online';
+
+/** One meeting pattern of a class, e.g. "Tue/Thu 1:00–2:30 PM, room 09-303, face-to-face". */
+export interface ClassSession {
+  /** 0 = Sunday … 6 = Saturday (Date#getDay) */
+  days: number[];
+  startTime: string;
+  endTime: string;
+  room?: string;
+  mode: ClassMode;
+}
+
 export interface ClassSchedule {
   id: string;
   subjectName: string;
   subjectCode?: string;
   teacher?: string;
-  room?: string;
   building?: string;
-  /** 0 = Sunday … 6 = Saturday (Date#getDay) */
-  days: number[];
-  startTime: string;
-  endTime: string;
+  /** At least one. A class can meet at different times/rooms on different days. */
+  sessions: ClassSession[];
   color: string;
   notes?: string;
   reminderEnabled: boolean;
@@ -57,7 +66,7 @@ export interface Settings {
 
 /** One entry on a given day: either a class occurrence or an academic event. */
 export type AgendaItem =
-  | { kind: 'class'; key: string; date: string; time: string; cls: ClassSchedule }
+  | { kind: 'class'; key: string; date: string; time: string; cls: ClassSchedule; session: ClassSession }
   | { kind: 'event'; key: string; date: string; time?: string; event: AcademicEvent };
 
 export type TaskFilter = 'today' | 'tomorrow' | 'week' | 'upcoming' | 'overdue' | 'completed';

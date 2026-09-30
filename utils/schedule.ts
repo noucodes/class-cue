@@ -3,6 +3,7 @@ import type {
   AcademicEvent,
   AgendaItem,
   ClassSchedule,
+  ClassSession,
   EventType,
   Priority,
   TaskFilter,
@@ -180,13 +181,34 @@ export function dashboardAlerts(events: AcademicEvent[], now: Date): DashboardAl
 
 // ---------- classes ----------
 
-export const classOccursOn = (cls: ClassSchedule, key: string) => cls.days.includes(weekdayOf(key));
+/** One class meeting pattern, paired with its class. */
+export interface ClassSlot {
+  cls: ClassSchedule;
+  session: ClassSession;
+}
+
+export const classOccursOn = (cls: ClassSchedule, key: string) =>
+  cls.sessions.some((s) => s.days.includes(weekdayOf(key)));
+
+/** Every class meeting on a weekday, earliest first. A class with two sessions that day appears twice. */
+export function slotsOnDay(classes: ClassSchedule[], day: number): ClassSlot[] {
+  return classes
+    .flatMap((cls) => cls.sessions.filter((s) => s.days.includes(day)).map((session) => ({ cls, session })))
+    .sort((a, b) => a.session.startTime.localeCompare(b.session.startTime));
+}
 
 export function agendaForDate(key: string, events: AcademicEvent[], classes: ClassSchedule[]): AgendaItem[] {
   const items: AgendaItem[] = [
-    ...classes
-      .filter((c) => classOccursOn(c, key))
-      .map((cls): AgendaItem => ({ kind: 'class', key: `${cls.id}@${key}`, date: key, time: cls.startTime, cls })),
+    ...slotsOnDay(classes, weekdayOf(key)).map(
+      ({ cls, session }): AgendaItem => ({
+        kind: 'class',
+        key: `${cls.id}@${key}@${session.startTime}`,
+        date: key,
+        time: session.startTime,
+        cls,
+        session,
+      }),
+    ),
     ...events
       .filter((e) => e.date === key)
       .map((event): AgendaItem => ({ kind: 'event', key: event.id, date: key, time: event.startTime, event })),
@@ -195,12 +217,7 @@ export function agendaForDate(key: string, events: AcademicEvent[], classes: Cla
   return items.sort((a, b) => (a.time ?? '99:99').localeCompare(b.time ?? '99:99'));
 }
 
-export function classesOnDay(classes: ClassSchedule[], day: number): ClassSchedule[] {
-  return classes.filter((c) => c.days.includes(day)).sort((a, b) => a.startTime.localeCompare(b.startTime));
-}
-
-export interface ClassOccurrence {
-  cls: ClassSchedule;
+export interface ClassOccurrence extends ClassSlot {
   date: string;
   start: Date;
   end: Date;
@@ -212,13 +229,33 @@ export function nextClass(classes: ClassSchedule[], now: Date): ClassOccurrence 
   const today = toDateKey(now);
   for (let i = 0; i < 8; i++) {
     const date = addDays(today, i);
-    const hit = classesOnDay(classes, weekdayOf(date))
-      .map((cls) => ({ cls, date, start: atTime(date, cls.startTime), end: atTime(date, cls.endTime) }))
+    const hit = slotsOnDay(classes, weekdayOf(date))
+      .map((slot) => ({ ...slot, date, start: atTime(date, slot.session.startTime), end: atTime(date, slot.session.endTime) }))
       .find((o) => o.end > now);
     if (hit) return { ...hit, ongoing: hit.start <= now };
   }
   return null;
 }
+
+/**
+ * The next meeting of one class on or after `from` that hasn't started by `now`, for defaulting a task's date.
+ * Returns the date and start time, or null if the class has no sessions.
+ */
+export function nextMeeting(cls: ClassSchedule, from: string, now: Date): { date: string; time: string } | null {
+  for (let i = 0; i < 8; i++) {
+    const date = addDays(from, i);
+    const slot = slotsOnDay([cls], weekdayOf(date)).find((s) => atTime(date, s.session.startTime) > now);
+    if (slot) return { date, time: slot.session.startTime };
+  }
+  return null;
+}
+
+/** "Mon / Wed" for a session's days, in Mon → Sun order. */
+export const formatDays = (days: number[], long = false) =>
+  [1, 2, 3, 4, 5, 6, 0].filter((d) => days.includes(d)).map(long ? weekdayName : weekdayShort).join(' / ');
+
+/** Room if any, otherwise "Online" for online sessions. */
+export const sessionPlace = (s: ClassSession) => s.room ?? (s.mode === 'online' ? 'Online' : undefined);
 
 // ---------- calendar ----------
 
@@ -255,7 +292,7 @@ export function weekStats(events: AcademicEvent[], classes: ClassSchedule[], now
   const to = addDays(from, 6);
   const inWeek = events.filter((e) => e.date >= from && e.date <= to);
   return {
-    classes: classes.reduce((n, c) => n + c.days.length, 0),
+    classes: classes.reduce((n, c) => n + c.sessions.reduce((m, s) => m + s.days.length, 0), 0),
     completed: inWeek.filter((e) => e.completed).length,
     upcoming: inWeek.filter((e) => !e.completed && !isOverdue(e, now)).length,
     overdue: events.filter((e) => isOverdue(e, now)).length,
@@ -281,7 +318,7 @@ export function searchAll(query: string, events: AcademicEvent[], classes: Class
   const hit = (...fields: (string | undefined)[]) => fields.some((f) => f?.toLowerCase().includes(q));
   const subjectName = new Map(classes.map((c) => [c.id, c.subjectName]));
   return {
-    classes: classes.filter((c) => hit(c.subjectName, c.subjectCode, c.teacher, c.room, c.building)),
+    classes: classes.filter((c) => hit(c.subjectName, c.subjectCode, c.teacher, c.building, ...c.sessions.map((x) => x.room))),
     events: events
       .filter((e) => hit(e.title, e.description, e.location, e.subjectId && subjectName.get(e.subjectId)))
       .sort(byDue),

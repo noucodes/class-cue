@@ -41,7 +41,8 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "check": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON utils/schedule.check.ts && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON utils/scheduleImport.check.ts",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "smoke:web": "node scripts/smoke-web.mjs"
   },
   "private": true
 }

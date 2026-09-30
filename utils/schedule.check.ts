@@ -10,6 +10,7 @@ import {
   filterTasks,
   formatTime,
   nextClass,
+  nextMeeting,
   relativeDayLabel,
   reminderDate,
   searchAll,
@@ -21,10 +22,13 @@ const ev = (p: Partial<AcademicEvent>): AcademicEvent => ({
   id: p.title ?? 'x', title: 'x', type: 'assignment', date: '2026-09-29', completed: false,
   reminderEnabled: false, createdAt: '', updatedAt: '', ...p,
 });
-const cls = (p: Partial<ClassSchedule>): ClassSchedule => ({
-  id: p.subjectName ?? 'c', subjectName: 'c', days: [2], startTime: '10:00', endTime: '11:30',
-  color: '#000', reminderEnabled: false, ...p,
-});
+const cls = (p: Partial<ClassSchedule> & { days?: number[]; startTime?: string; endTime?: string }): ClassSchedule => {
+  const { days = [2], startTime = '10:00', endTime = '11:30', ...rest } = p;
+  return {
+    id: p.subjectName ?? 'c', subjectName: 'c', sessions: [{ days, startTime, endTime, mode: 'f2f' }],
+    color: '#000', reminderEnabled: false, ...rest,
+  };
+};
 
 // dates
 assert.equal(addDays('2026-12-31', 1), '2027-01-01');
@@ -58,7 +62,16 @@ const math = cls({ subjectName: 'Math', startTime: '08:00', endTime: '09:30' });
 assert.equal(nextClass([web, math], now)?.cls.subjectName, 'Math');
 assert.equal(nextClass([web, math], now)?.ongoing, true);
 assert.equal(nextClass([web], new Date(2026, 8, 29, 12))?.date, '2026-10-01'); // Thursday
-assert.deepEqual(agendaForDate('2026-09-29', events, [web]).map((i) => i.key)[0], 'Web@2026-09-29');
+assert.deepEqual(agendaForDate('2026-09-29', events, [web]).map((i) => i.key)[0], 'Web@2026-09-29@10:00');
+
+// multiple schedules on one class
+const lab = cls({ subjectName: 'Lab' });
+lab.sessions.push({ days: [4], startTime: '13:00', endTime: '16:00', mode: 'online' });
+assert.equal(agendaForDate('2026-10-01', [], [lab])[0].time, '13:00'); // Thursday uses the 2nd schedule
+assert.equal(nextClass([lab], new Date(2026, 8, 29, 12))?.session.startTime, '13:00');
+assert.deepEqual(nextMeeting(lab, '2026-09-30', now), { date: '2026-10-01', time: '13:00' }); // task default
+assert.deepEqual(nextMeeting(lab, '2026-09-29', now), { date: '2026-09-29', time: '10:00' }); // today's class still ahead
+assert.deepEqual(nextMeeting(lab, '2026-09-29', new Date(2026, 8, 29, 11)), { date: '2026-10-01', time: '13:00' }); // already started → next one
 
 // reminders
 assert.equal(reminderDate(ev({ startTime: '17:00', reminderEnabled: true, reminderMinutes: 60 }))?.getHours(), 16);

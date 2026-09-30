@@ -4,10 +4,10 @@ import { Button, IconButton, Text, useTheme } from 'react-native-paper';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Card, EmptyState, InfoLine, SectionTitle } from '@/components/ui';
 import { EventRow } from '@/components/rows';
-import { WEEK_ORDER } from '@/constants';
+import { CLASS_MODES } from '@/constants';
 import { useNow } from '@/hooks/useNow';
 import { useAppStore } from '@/store/useAppStore';
-import { byDue, formatTimeRange, weekdayName } from '@/utils/schedule';
+import { byDue, formatDays, formatTimeRange } from '@/utils/schedule';
 
 export default function ClassDetailScreen() {
   const theme = useTheme();
@@ -58,11 +58,23 @@ export default function ClassDetailScreen() {
         </Text>
       </View>
 
+      {cls.sessions.map((s, i) => (
+        <Card key={i} style={{ marginBottom: 12 }}>
+          {cls.sessions.length > 1 && (
+            <Text variant="labelMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 4 }}>
+              {`Schedule ${i + 1}`}
+            </Text>
+          )}
+          <InfoLine icon="calendar-week">{formatDays(s.days, true)}</InfoLine>
+          <InfoLine icon="clock-outline">{formatTimeRange(s.startTime, s.endTime)}</InfoLine>
+          <InfoLine icon={CLASS_MODES[s.mode].icon}>{CLASS_MODES[s.mode].label}</InfoLine>
+          {s.room && <InfoLine icon="map-marker-outline">{s.room}</InfoLine>}
+        </Card>
+      ))}
+
       <Card>
-        <InfoLine icon="calendar-week">{WEEK_ORDER.filter((d) => cls.days.includes(d)).map(weekdayName).join(' / ')}</InfoLine>
-        <InfoLine icon="clock-outline">{formatTimeRange(cls.startTime, cls.endTime)}</InfoLine>
         {cls.teacher && <InfoLine icon="account-outline">{cls.teacher}</InfoLine>}
-        {(cls.room || cls.building) && <InfoLine icon="map-marker-outline">{[cls.room, cls.building].filter(Boolean).join(', ')}</InfoLine>}
+        {cls.building && <InfoLine icon="office-building-outline">{cls.building}</InfoLine>}
         <InfoLine icon="bell-outline">{cls.reminderEnabled ? `Reminder ${cls.reminderMinutes} min before` : 'Reminder off'}</InfoLine>
       </Card>
 

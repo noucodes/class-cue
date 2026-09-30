@@ -4,20 +4,14 @@ import { IconButton, Text, useTheme } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { QuickAddFab } from '@/components/QuickAddFab';
-import { ClassRow } from '@/components/rows';
 import { EmptyState, SectionTitle, styles } from '@/components/ui';
-import { NextClassCard, SmartAlerts, TodaySummary, UpcomingList } from '@/features/home/HomeSections';
+import { DueSoon, TodayClasses } from '@/features/home/HomeSections';
 import { useNow } from '@/hooks/useNow';
 import { useAppStore, useClassMap } from '@/store/useAppStore';
-import {
-  classesOnDay,
-  dashboardAlerts,
-  formatDateLong,
-  greeting,
-  nextClass,
-  toDateKey,
-  upcomingEvents,
-} from '@/utils/schedule';
+import { addDays, byDue, formatDateLong, greeting, nextClass, slotsOnDay, toDateKey } from '@/utils/schedule';
+
+/** How many tasks the dashboard shows; the Tasks tab has the rest. */
+const DUE_SOON_LIMIT = 5;
 
 export default function HomeScreen() {
   const theme = useTheme();
@@ -30,17 +24,15 @@ export default function HomeScreen() {
 
   const today = toDateKey(now);
   const data = useMemo(() => {
-    const todays = events.filter((e) => e.date === today && !e.completed);
+    const weekEnd = addDays(today, 6);
     return {
-      alerts: dashboardAlerts(events, now),
-      upcoming: upcomingEvents(events, now, 6),
+      todayClasses: slotsOnDay(classes, now.getDay()),
       next: nextClass(classes, now),
-      todayClasses: classesOnDay(classes, now.getDay()),
-      counts: {
-        tasksDue: todays.filter((e) => e.type !== 'quiz' && e.type !== 'exam').length,
-        quizzes: todays.filter((e) => e.type === 'quiz').length,
-        exams: todays.filter((e) => e.type === 'exam').length,
-      },
+      // Overdue items sort first because they're due earliest.
+      dueSoon: events
+        .filter((e) => !e.completed && e.date <= weekEnd)
+        .sort(byDue)
+        .slice(0, DUE_SOON_LIMIT),
     };
   }, [events, classes, now, today]);
 
@@ -60,31 +52,22 @@ export default function HomeScreen() {
           <IconButton icon="magnify" onPress={() => router.push('/search')} accessibilityLabel="Search" />
         </View>
 
-        <TodaySummary {...data.counts} classes={data.todayClasses.length} />
-        <SmartAlerts alerts={data.alerts} subjects={subjects} now={now} hasUpcoming={data.upcoming.length > 0} />
-        <NextClassCard next={data.next} now={now} />
-        <UpcomingList events={data.upcoming} subjects={subjects} now={now} />
-
-        <SectionTitle>{"Today's schedule"}</SectionTitle>
-        {data.todayClasses.length ? (
-          <View style={{ gap: 8 }}>
-            {data.todayClasses.map((c) => (
-              <ClassRow key={c.id} cls={c} showDays={false} />
-            ))}
-          </View>
-        ) : classes.length ? (
-          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-            No classes today.
-          </Text>
+        {classes.length ? (
+          <>
+            <SectionTitle>Today</SectionTitle>
+            <TodayClasses slots={data.todayClasses} next={data.next} now={now} />
+          </>
         ) : (
           <EmptyState
             icon="book-plus-outline"
             title="No classes added yet."
-            message="Add your first class to build your schedule."
+            message="Add your classes or import them from your registration PDF."
             actionLabel="Add Class"
             onAction={() => router.push('/class/edit')}
           />
         )}
+
+        <DueSoon events={data.dueSoon} subjects={subjects} now={now} />
       </ScrollView>
       <QuickAddFab />
     </View>

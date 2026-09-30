@@ -3,8 +3,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import { TASK_TYPES } from '@/constants';
 import { PICKER_COPIES } from '@/services/scheduleImport';
-import { DEFAULT_SETTINGS, type AppData } from '@/store/useAppStore';
-import type { AcademicEvent, ClassSchedule, Settings } from '@/types';
+import { DEFAULT_SETTINGS, upgradeClass, type AppData } from '@/store/useAppStore';
+import type { AcademicEvent, Settings } from '@/types';
 import { DATE_RE, TIME_RE, toDateKey } from '@/utils/schedule';
 
 interface Backup extends AppData {
@@ -57,18 +57,27 @@ function isEvent(v: unknown): v is AcademicEvent {
   );
 }
 
-function isClass(v: unknown): v is ClassSchedule {
+function isSession(v: unknown): boolean {
   return (
     isObj(v) &&
-    typeof v.id === 'string' &&
-    typeof v.subjectName === 'string' &&
     Array.isArray(v.days) &&
     v.days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6) &&
     typeof v.startTime === 'string' &&
     TIME_RE.test(v.startTime) &&
     typeof v.endTime === 'string' &&
     TIME_RE.test(v.endTime) &&
-    typeof v.color === 'string'
+    optStr(v.room)
+  );
+}
+
+/** Accepts both current classes (with `sessions`) and older backups (one schedule on the class). */
+function isClass(v: unknown): v is Parameters<typeof upgradeClass>[0] {
+  return (
+    isObj(v) &&
+    typeof v.id === 'string' &&
+    typeof v.subjectName === 'string' &&
+    typeof v.color === 'string' &&
+    (Array.isArray(v.sessions) ? v.sessions.length > 0 && v.sessions.every(isSession) : isSession(v))
   );
 }
 
@@ -79,7 +88,14 @@ export function parseBackup(raw: unknown): AppData {
   if (!Array.isArray(classes) || !classes.every(isClass)) throw new Error('The backup contains invalid classes.');
   return {
     events,
-    classes: classes.map((c) => ({ ...c, reminderEnabled: c.reminderEnabled === true })),
+    classes: classes.map((c) => {
+      const cls = upgradeClass(c);
+      return {
+        ...cls,
+        sessions: cls.sessions.map((x) => ({ ...x, mode: x.mode === 'online' ? 'online' : 'f2f' })),
+        reminderEnabled: cls.reminderEnabled === true,
+      };
+    }),
     settings: parseSettings(settings),
   };
 }

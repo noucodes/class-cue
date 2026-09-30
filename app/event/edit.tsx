@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
-import { Button, TextInput, useTheme } from 'react-native-paper';
+import { Button, Text, TextInput, useTheme } from 'react-native-paper';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { ChipGroup, FieldError, PickerField, ReminderField, formStyles } from '@/components/form';
 import { EVENT_TYPES, PRIORITIES, TASK_TYPES, TYPE_FIELDS } from '@/constants';
 import { useAppStore, type EventInput } from '@/store/useAppStore';
 import type { EventType, Priority, TaskType } from '@/types';
-import { minutesOf, toDateKey } from '@/utils/schedule';
+import { minutesOf, nextMeeting, toDateKey } from '@/utils/schedule';
 
 type Errors = Partial<Record<'title' | 'endTime' | 'reminder', string>>;
 
@@ -29,13 +29,22 @@ export default function EditEventScreen() {
   const addEvent = useAppStore((s) => s.addEvent);
   const updateEvent = useAppStore((s) => s.updateEvent);
 
+  // New tasks default to the subject's next class meeting until the user picks a date or time themselves.
+  const [dateTouched, setDateTouched] = useState(!!existing);
+  const withClassDate = (f: EventInput): EventInput => {
+    if (dateTouched || !f.subjectId) return f;
+    const cls = classes.find((c) => c.id === f.subjectId);
+    const meeting = cls && nextMeeting(cls, params.date ?? toDateKey(new Date()), new Date());
+    return meeting ? { ...f, date: meeting.date, startTime: meeting.time } : f;
+  };
+
   const [form, setForm] = useState<EventInput>(() => {
     if (existing) {
       const { id: _id, createdAt: _c, updatedAt: _u, ...rest } = existing;
       return rest;
     }
     const type = params.type && TASK_TYPES.includes(params.type) ? params.type : 'assignment';
-    return {
+    return withClassDate({
       title: '',
       type,
       subjectId: params.subjectId,
@@ -44,7 +53,7 @@ export default function EditEventScreen() {
       completed: false,
       reminderEnabled: true,
       reminderMinutes: defaultReminder,
-    };
+    });
   });
   const [errors, setErrors] = useState<Errors>({});
   const set = <K extends keyof EventInput>(key: K, value: EventInput[K]) => setForm((f) => ({ ...f, [key]: value }));
@@ -57,13 +66,15 @@ export default function EditEventScreen() {
       router.replace('/class/edit');
       return;
     }
-    setForm((f) => ({
-      ...f,
-      type,
-      priority: TYPE_FIELDS[type].priority ? (f.priority ?? 'medium') : undefined,
-      location: TYPE_FIELDS[type].location ? f.location : undefined,
-      endTime: TYPE_FIELDS[type].endTime ? f.endTime : undefined,
-    }));
+    setForm((f) =>
+      withClassDate({
+        ...f,
+        type,
+        priority: TYPE_FIELDS[type].priority ? (f.priority ?? 'medium') : undefined,
+        location: TYPE_FIELDS[type].location ? f.location : undefined,
+        endTime: TYPE_FIELDS[type].endTime ? f.endTime : undefined,
+      }),
+    );
   };
 
   const save = () => {
@@ -110,14 +121,36 @@ export default function EditEventScreen() {
             label="Subject"
             options={[{ value: '', label: 'None' }, ...classes.map((c) => ({ value: c.id, label: c.subjectName, color: c.color }))]}
             isSelected={(id) => (form.subjectId ?? '') === id}
-            onToggle={(id) => set('subjectId', id || undefined)}
+            onToggle={(id) => setForm((f) => withClassDate({ ...f, subjectId: id || undefined }))}
           />
         )}
 
-        <PickerField mode="date" label={fields.timeLabel === 'Due time' ? 'Due date' : 'Date'} value={form.date} onChange={(d) => set('date', d)} />
+        <PickerField
+          mode="date"
+          label={fields.timeLabel === 'Due time' ? 'Due date' : 'Date'}
+          value={form.date}
+          onChange={(d) => {
+            setDateTouched(true);
+            set('date', d);
+          }}
+        />
+        {!dateTouched && classes.length > 0 && (
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: -8, marginBottom: 16 }}>
+            {form.subjectId ? 'Set to the next class of this subject.' : 'Pick a subject to use its next class date.'}
+          </Text>
+        )}
         <View style={{ flexDirection: 'row', gap: 12 }}>
           <View style={{ flex: 1 }}>
-            <PickerField mode="time" label={fields.timeLabel} value={form.startTime} onChange={(t) => set('startTime', t)} onClear={() => set('startTime', undefined)} />
+            <PickerField
+              mode="time"
+              label={fields.timeLabel}
+              value={form.startTime}
+              onChange={(t) => {
+                setDateTouched(true);
+                set('startTime', t);
+              }}
+              onClear={() => set('startTime', undefined)}
+            />
           </View>
           {fields.endTime && (
             <View style={{ flex: 1 }}>

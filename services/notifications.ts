@@ -3,13 +3,14 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 import type * as NotificationsModule from 'expo-notifications';
 import { EVENT_TYPES } from '@/constants';
 import type { AppData } from '@/store/useAppStore';
-import type { AcademicEvent, ClassSchedule } from '@/types';
+import type { AcademicEvent, ClassSchedule, ClassSession } from '@/types';
 import {
   classReminderSlot,
   formatDuration,
   formatTime,
   reminderDate,
   relativeDayLabel,
+  sessionPlace,
   toDateKey,
 } from '@/utils/schedule';
 
@@ -55,7 +56,7 @@ function eventContent(e: AcademicEvent, fireAt: Date, subject?: string): Notific
   const { label } = EVENT_TYPES[e.type];
   const when = e.startTime ? formatTime(e.startTime) : 'today';
   const data = { eventId: e.id };
-  if (e.type === 'quiz' || e.type === 'exam') {
+  if (e.type === 'quiz' || e.type === 'exam' || e.type === 'report') {
     const day = relativeDayLabel(e.date, toDateKey(fireAt)).toLowerCase();
     return { title: `${label} ${day}`, body: [subject ?? e.title, when, e.location].filter(Boolean).join(' · '), data };
   }
@@ -69,10 +70,11 @@ function eventContent(e: AcademicEvent, fireAt: Date, subject?: string): Notific
   };
 }
 
-function classContent(c: ClassSchedule, minutes: number): NotificationsModule.NotificationContentInput {
+function classContent(c: ClassSchedule, s: ClassSession, minutes: number): NotificationsModule.NotificationContentInput {
+  const place = sessionPlace(s);
   return {
     title: 'Class starting soon',
-    body: `${c.subjectName} starts in ${formatDuration(minutes * 60_000)}.${c.room ? `\n${c.room}` : ''}`,
+    body: `${c.subjectName} starts in ${formatDuration(minutes * 60_000)}.${place ? `\n${place}` : ''}`,
     data: { classId: c.id },
   };
 }
@@ -103,16 +105,18 @@ export async function syncNotifications({ events, classes, settings }: AppData):
 
   for (const c of classes) {
     if (!c.reminderEnabled || c.reminderMinutes == null) continue;
-    for (const day of c.days) {
-      jobs.push(
-        Notifications.scheduleNotificationAsync({
-          content: classContent(c, c.reminderMinutes),
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-            ...classReminderSlot(c.startTime, day, c.reminderMinutes),
-          },
-        }),
-      );
+    for (const s of c.sessions) {
+      for (const day of s.days) {
+        jobs.push(
+          Notifications.scheduleNotificationAsync({
+            content: classContent(c, s, c.reminderMinutes),
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+              ...classReminderSlot(s.startTime, day, c.reminderMinutes),
+            },
+          }),
+        );
+      }
     }
   }
   await Promise.all(jobs);

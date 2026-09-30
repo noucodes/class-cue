@@ -28,6 +28,21 @@ interface AppState extends AppData {
   replaceAll: (data: AppData) => void;
 }
 
+/** Classes saved before multi-schedule support kept days/time/room on the class itself. */
+type LegacyClass = Omit<ClassSchedule, 'sessions'> & {
+  sessions?: ClassSchedule['sessions'];
+  days?: number[];
+  startTime?: string;
+  endTime?: string;
+  room?: string;
+};
+
+export function upgradeClass(c: LegacyClass): ClassSchedule {
+  if (c.sessions) return c as ClassSchedule;
+  const { days = [], startTime = '08:00', endTime = '09:00', room, ...rest } = c;
+  return { ...rest, sessions: [{ days, startTime, endTime, room, mode: 'f2f' }] };
+}
+
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -95,9 +110,14 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: STORAGE_KEY,
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => appStorage),
       partialize: ({ events, classes, settings }) => ({ events, classes, settings }),
+      // v1 → v2: one schedule per class became a list of sessions.
+      migrate: (persisted) => {
+        const p = persisted as Partial<AppData> | undefined;
+        return { ...p, classes: (p?.classes ?? []).map(upgradeClass) } as AppData;
+      },
       merge: (persisted, current) => {
         const p = persisted as Partial<AppData> | undefined;
         return { ...current, ...p, settings: { ...DEFAULT_SETTINGS, ...p?.settings } };

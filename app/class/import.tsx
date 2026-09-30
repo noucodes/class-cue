@@ -3,11 +3,11 @@ import { Alert, Pressable, ScrollView, View } from 'react-native';
 import { ActivityIndicator, Button, Checkbox, Switch, Text, useTheme } from 'react-native-paper';
 import { router } from 'expo-router';
 import { Card, EmptyState, SectionTitle } from '@/components/ui';
-import { CLASS_COLORS, WEEK_ORDER } from '@/constants';
+import { CLASS_COLORS, CLASS_MODES } from '@/constants';
 import { pickSchedulePdf } from '@/services/scheduleImport';
 import { useAppStore, type ClassInput } from '@/store/useAppStore';
 import type { ClassSchedule } from '@/types';
-import { formatTimeRange, weekdayShort } from '@/utils/schedule';
+import { formatDays, formatTimeRange } from '@/utils/schedule';
 import type { ClassDraft } from '@/utils/scheduleImport';
 
 interface Row {
@@ -16,22 +16,12 @@ interface Row {
   duplicate: boolean;
 }
 
+// The PDF has one class per subject name, so a class with the same name is already imported.
 const isDuplicate = (d: ClassDraft, classes: ClassSchedule[]) =>
-  classes.some(
-    (c) =>
-      (c.subjectCode ?? c.subjectName).toLowerCase() === (d.subjectCode ?? d.subjectName).toLowerCase() &&
-      c.startTime === d.startTime &&
-      c.days.some((day) => d.days.includes(day)),
-  );
+  classes.some((c) => c.subjectName.trim().toLowerCase() === d.subjectName.trim().toLowerCase());
 
-function toClassInputs(drafts: ClassDraft[], colorOffset: number): ClassInput[] {
-  const colors = new Map<string, string>();
-  return drafts.map((d) => {
-    const key = d.subjectCode ?? d.subjectName;
-    if (!colors.has(key)) colors.set(key, CLASS_COLORS[(colorOffset + colors.size) % CLASS_COLORS.length]);
-    return { ...d, color: colors.get(key)!, reminderEnabled: true, reminderMinutes: 15 };
-  });
-}
+const toClassInputs = (drafts: ClassDraft[], colorOffset: number): ClassInput[] =>
+  drafts.map((d, i) => ({ ...d, color: CLASS_COLORS[(colorOffset + i) % CLASS_COLORS.length], reminderEnabled: true, reminderMinutes: 15 }));
 
 export default function ImportScheduleScreen() {
   const theme = useTheme();
@@ -141,12 +131,14 @@ export default function ImportScheduleScreen() {
                       {draft.subjectName}
                       {draft.subjectCode ? <Text style={{ color: theme.colors.onSurfaceVariant }}>{`  ${draft.subjectCode}`}</Text> : null}
                     </Text>
-                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                      {WEEK_ORDER.filter((d) => draft.days.includes(d)).map(weekdayShort).join(' / ')} · {formatTimeRange(draft.startTime, draft.endTime)}
-                    </Text>
-                    {(draft.room || draft.teacher) && (
+                    {draft.sessions.map((s, si) => (
+                      <Text key={si} variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
+                        {[formatDays(s.days), formatTimeRange(s.startTime, s.endTime), CLASS_MODES[s.mode].label, s.room].filter(Boolean).join(' · ')}
+                      </Text>
+                    ))}
+                    {draft.teacher && (
                       <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
-                        {[draft.room, draft.teacher].filter(Boolean).join(' · ')}
+                        {draft.teacher}
                       </Text>
                     )}
                     {duplicate && (
